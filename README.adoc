@@ -358,3 +358,319 @@ func main() {
 ----
 <1> 조건문만 표현
 <2> 무한 루프
+
+== Date Types
+
+* go의 기본 자료형
++
+[source, go]
+----
+bool
+
+string
+
+int  int8  int16  int32  int64
+uint uint8 uint16 uint32 uint64 uintptr
+
+byte <1>
+
+rune <2>
+
+float32 float64
+
+complex64 complex128
+----
+<1> uint8의 다른 이름(alias)
+<2> int32의 다른 이름(alias), 유니코드/코드/포인트 표현
+
+[source, go]
+----
+package main
+
+import (
+	"fmt"
+	"math/cmplx"
+)
+
+var (
+	ToBe   bool       = false
+	MaxInt uint64     = 1<<64 - 1
+	z      complex128 = cmplx.Sqrt(-5 + 12i)
+)
+
+func main() {
+	const f = "%T(%v)\n"
+	fmt.Printf(f, ToBe, ToBe)
+	fmt.Printf(f, MaxInt, MaxInt)
+	fmt.Printf(f, z, z)
+}
+
+// ---result---
+// bool(false)
+// uint64(18446744073709551615)
+// complex128((2+3i))
+----
+
+== Structs
+
+* 필드(데이터)들의 조합
+* `type` 선언으로 구조체의 이름 지정
+* 구조체에 속한 필드(데이터)는 `dot(.)` 으로 접근
+* 원하는 필드를 `{Name: value}` 형식으로 할당
++
+TIP: 필드 순서는 상관 없음
+
+[source, go]
+----
+package main
+
+import "fmt"
+
+type Vertex struct {
+	X int
+	Y int <1>
+}
+
+func main() {
+	s := Vertex{} <2>
+	p := Vertex{X: 1}
+	q := Vertex{1, 2}
+	q.X = 4
+	fmt.Println(s, p, q)
+}
+
+// ---result---
+// {0 0} {1 0} {4 2}
+----
+<1> `X, Y int` 로 표현 가능
+<2> 따로 설정하지 않으면 `0` 으로 초기화
+
+== Pointers
+
+* go에는 포인터가 있지만 포인터 연산은 불가능
+* 구조체 변수는 구조체 포인터로 접근 가능
+
+[source, go]
+----
+package main
+
+import "fmt"
+
+type Vertex struct {
+	X int
+	Y int
+}
+
+func main() {
+	p := Vertex{1, 2}
+	q := &p <1>
+	q.X = 1e9
+	fmt.Println(p)
+}
+
+// ---result---
+// {1000000000 2}
+----
+<1> q는 p의 포인터로 접근
+
+== new function
+
+* `new(T)` 는 모든 필드에 `0 (zero value)` 이 할당된 T 타입의 포인터를 반환
++
+IMPORTANT: zero value는 숫자 타입에서는 0 , 참조 타입에서는 nil
+* 사용방법
++
+[source, go]
+----
+var t *T = new(T)
+// 또는 t := new(T)
+// 변수 t는 T 에서 반환된 포인터를 갖음
+----
+
+[source, go]
+----
+package main
+
+import "fmt"
+
+type Vertex struct {
+	X, Y int
+}
+
+func main() {
+	v := new(Vertex) <1>
+	fmt.Println(v)
+
+	v.X, v.Y = 11, 9
+	fmt.Println(v)
+}
+
+// ---result---
+// &{0 0}
+// &{11 9}
+----
+<1> Vertex 타입의 포인터 반환
+
+== Slices
+
+* 슬라이스는 배열을 의미
+* `[]T` 는 타입 T 를 가지는 요소의 슬라이스
+* 슬라이스는 분할하거나 같은 배열을 가리키는(point) 새로운 슬라이스를 생성 가능
++
+[cols="1,2"]
+|===
+| 표현 | 설명
+| s[lo:hi] | lo 에서 hi-1 의 요소를 포함하는 슬라이스
+| s[lo:lo] | 빈 슬라이스
+| s[lo:lo+1] | 하나의 요소를 갖는 슬라이스
+|===
+[[make]]
+* `make` 함수로 슬라이스 생성 가능
++
+--
+[cols="1,2a"]
+|===
+| 표현 | 슬라이스 정보
+| a := make([]int, 5)
+| len(a)=5
+
+* 두번째 매개변수로 슬라이스 크기를 설정
+| b := make([]int, 0, 5)
+| len(b)=0, cap(b)=5
+
+* 세번째 매개변수로 용량을 제한
+| b = b[:cap(b)] | len(b)=5, cap(b)=5
+| b = b[1:] | len(b)=4, cap(b)=4
+|===
+
+NOTE: `make` 로 생성한 슬라이스는 0을 할당한 배열을 생성하고 포인터를 반환
+--
+* 슬라이스의 zero value는 nil (길이와 최대 크기가 0)
+
+TIP: 참고 http://golang.org/doc/articles/slices_usage_and_internals.html[Slices: usage and internals]
+
+[source, go]
+----
+package main
+
+import "fmt"
+
+func main() {
+	var t []int <1>
+	fmt.Println(t, len(t), cap(t))
+	if t == nil {
+		fmt.Println("nil!")
+	}
+
+	p := []int{2, 3, 5, 7, 11, 13} <2>
+	fmt.Println("p ==", p)
+	fmt.Println("p[1:4] ==", p[1:4])
+	fmt.Println("p[:3] ==", p[:3])
+	fmt.Println("p[4:] ==", p[4:])
+
+	for i := 0; i < len(p); i++ {
+		fmt.Printf("p[%d] == %d\n", i, p[i])
+	}
+
+	a := make([]int, 5) <3>
+	b := make([]int, 0, 5)
+	c := b[:2]
+	d := c[2:5]
+	printSlice("a", a)
+	printSlice("b", b)
+	printSlice("c", c)
+	printSlice("d", d)
+}
+
+func printSlice(s string, x []int) {
+	fmt.Printf("%s len=%d cap=%d %v\n", s, len(x), cap(x), x)
+}
+
+// ---result---
+// [] 0 0
+// nil!
+// p == [2 3 5 7 11 13]
+// p[1:4] == [3 5 7]
+// p[:3] == [2 3 5]
+// p[4:] == [11 13]
+// p[0] == 2
+// p[1] == 3
+// p[2] == 5
+// p[3] == 7
+// p[4] == 11
+// p[5] == 13
+// a len=5 cap=5 [0 0 0 0 0]
+// b len=0 cap=5 []
+// c len=2 cap=5 [0 0]
+// d len=3 cap=3 [0 0 0]
+----
+<1> 빈 슬라이스
+<2> 슬라이스 생성 및 값 초기화
+<3> `make` 에 대한 설명은 <<make, 참고>>
+
+== Range
+* `for` 문에서 `range` 를 사용하여 슬라이스나 맵을 순회
+* `_` 를 이용해서 인덱스나 값를 무시
+
+[source, go]
+----
+package main
+
+import "fmt"
+
+var pow = []int{1, 2, 4, 8}
+
+func main() {
+	for i, v := range pow { <1>
+		fmt.Printf("2**%d = %d\n", i, v)
+	}
+
+	pow = make([]int, 4)
+	for i := range pow { <2>
+		pow[i] = 1 << uint(i)
+	}
+	for _, value := range pow { <3>
+		fmt.Printf("%d\n", value)
+	}
+}
+
+// ---result---
+// 2**0 = 1
+// 2**1 = 2
+// 2**2 = 4
+// 2**3 = 8
+// 1
+// 2
+// 4
+// 8
+----
+<1> `i` 는 인덱스, `v` 는 값을 받음
+<2> 인덱스만 사용
+<3> 값만 사용
+
+== Maps
+
+* 맵은 값에 키를 지정
+* 맵 리터럴은 구조체 리터럴과 비슷하지만 key를 반드시 지정해야함
+* 맵 요소 설정
++
+--
+[cols="1,2a"]
+|===
+| 표현 | 설명
+| m[key] = elem | 맵 m의 요소를 삽입/수정
+| elem = m[key] | 요소 값 반환
+| delete(m, key) | 요소 값 삭제
+| elem, ok = m[key]
+| 키의 존재 여부 확인
+
+* ok: m에 key가 존재하면 `true` 아니면 `false`
+* elem: 존재하지 않는 key의 반환 값은 타입에 맞는 zero value
+|===
+--
+
+[WARNING]
+====
+* 맵은 반드시 사용하기 전에 `make` 를 명시 (`new` 가 아님!)
+* `make` 를 수행하지 않은 빈 맵에는 값 할당 안됨
+====
