@@ -886,7 +886,7 @@ func main() {
 ----
 <1> Vertex와 MyFloat 은 Abs를 구현했기 때문에 Abser 인터페이스
 
-## Error
+== Error
 
 * Go 에서는 에러 문장(string)으로 자신을 표현할 수 있는 것은 모두 에러
 * 이는 문자열을 반환하는 하나의 메소드 Error 로 구성된 내장 인터페이스 타입 error 에서 나옴
@@ -934,3 +934,314 @@ func run() error {
 ----
 <1> MyError 값 설정
 <2> fmt 패키지에서 출력시 실행
+
+== WebServer
+
+* `http.Handler` 인터페이스를 구현하여 HTTP 요청을 처리
++
+[source, go]
+----
+package http
+
+type Handler interface {
+	ServeHTTP(w ResponseWriter, r *Request)
+}
+----
+
+[source, go]
+----
+package main
+
+import (
+	"fmt"
+	"net/http"
+)
+
+type Hello struct{}
+
+func main() {
+	var h Hello
+	http.ListenAndServe("localhost:4000", h) <1>
+}
+
+func (h Hello) ServeHTTP(w http.ResponseWriter, r *http.Request) { <2>
+	fmt.Fprint(w, "Hello!")
+}
+----
+<1> `http://localhost:4000` 으로 HTTP 서비스를 제공
+<2> `http.Handler` 인터페이스를 구현
+
+== Image
+
+* `image` 패키지는 Image 인터페이스를 정의 (http://golang.org/pkg/image/#Image[참고])
++
+[source, go]
+----
+package image
+
+type Image interface {
+	ColorModel() color.Model
+	Bounds() Rectangle
+	At(x, y int) color.Color
+}
+----
+
+[source, go]
+----
+package main
+
+import (
+	"fmt"
+	"image"
+)
+
+func main() {
+	m := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	fmt.Println(m.Bounds())
+	fmt.Println(m.At(0, 0).RGBA())
+}
+
+// ---result---
+// (0,0)-(100,100)
+// 0 0 0 0
+----
+
+== Goroutines
+
+* `고루틴` 은 Go 런타임에 의해 관리되는 경량 쓰레드
+* 고루틴은 `go` 구문을 이용해서 수행
++
+[source, go]
+----
+go f(x, y, z) <1>
+----
+<1> 새로운 고루틴에서 f가 수행
+* 고루틴은 동일한 주소 공간에서 실행되기 때문에 공유되는 자원으로의 접근은 반드시 동기화 되야함 (http://golang.org/pkg/sync[참고])
+
+[source, go]
+----
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func say(s string) {
+	for i := 0; i < 5; i++ {
+		time.Sleep(100 * time.Millisecond)
+		fmt.Println(s)
+	}
+}
+
+func main() {
+	go say("world") <1>
+	say("hello")
+}
+
+// ---result---
+// hello <2>
+// world
+// world
+// hello
+// world
+// hello
+// world
+// hello
+// world
+// hello
+----
+<1> 고루틴 시작
+<2> `world` 프린트가 별도의 쓰레드에서 수행
+
+== Channels
+
+* 채널은 채널 연산자 `<-` 를 이용해 값을 주고 받을 수 있는 타입이 존재하는 파이프
+* 데이터가 화살표 방향을 따라 흐름
++
+[source, go]
+----
+ch <- v    // v를 ch로 전달
+v := <-ch  // ch에서 값을 받아 v에 전달
+----
+* `map` 또는 `slice` 처럼 사용하기 전에 생성해야함
++
+[source, go]
+----
+ch := make(chan int)
+----
+* 송/수신은 상대편이 준비될 때까지 블록 (명시적인 락이나 조건 없이도 동기화)
+* `make` 두번째 인자에 버퍼 용량을 넣어 버퍼링되는 채널 생성
++
+[source, go]
+----
+ch := make(chan int, 100)
+----
+* 데이터 송신 측에서는 더이상 보낼 값이 없다는 것을 알리기 위해 채널을 `close` 할 수 있음
+* 데이터 수신 측에서는 수신 코드에 두번째 인자를 주어 채널이 닫혔는지 확인 가능
++
+[source, go]
+----
+v, ok := <-ch <1>
+----
+<1> 채널이 이미 닫혔고 더이상 받을 값이 없다면 ok는 false
+
+[WARNING]
+====
+* 송신에서만 채널을 닫을 수 있음 (수신에서는 불가능)
+* 이미 닫힌 채널에 데이터를 보내면 패닉 발생
+* 채널을 파일과 달라 항상 닫을 필요가 없음
+* 채널을 닫는것은 수신측에 더이상 보낼 값이 없다고 말해야 할때만 수행 (예. range 루프 종료)
+====
+
+[source, go]
+----
+package main
+
+import "fmt"
+
+func sum(a []int, c chan int) {
+	sum := 0
+	for _, v := range a {
+		sum += v
+	}
+	c <- sum <1>
+}
+
+func fibonacci(n int, c chan int) {
+	x, y := 0, 1
+	for i := 0; i < n; i++ {
+		c <- x
+		x, y = y, x+y
+	}
+	close(c) <2>
+}
+
+func main() {
+	a := []int{7, 2, 8, -9, 4, 0}
+	c := make(chan int)
+	go sum(a[:len(a)/2], c)
+	go sum(a[len(a)/2:], c)
+	x, y := <-c, <-c <3>
+	fmt.Println(x, y, x+y)
+
+	c = make(chan int, 2) <4>
+	c <- 1
+	c <- 2
+	fmt.Println(<-c)
+	fmt.Println(<-c)
+	c <- 3 <5>
+	fmt.Println(<-c)
+
+	c = make(chan int, 10)
+	go fibonacci(cap(c), c)
+	for i := range c { <6>
+		fmt.Println(i) <8>
+	}
+}
+
+// ---result---
+// 1
+// 2
+// 3
+// 0
+// 1
+// 1
+// 2
+// 3
+// 5
+// 8
+// 13
+// 21
+// 34
+----
+<1> 배열의 값을 모두 더해 파이프로 송신
+<2> 피보나치 수열값을 모두 파이프로 송신하고 채널을 닫음
+<3> 고루틴으로 수행한 sum 값을 수신
+<4> 버퍼 용량을 int 타입 2개로 설정해서 채널 생성
+<5> 채널에서 값을 빼지않고 수행할 경우 오류 발생
+<6> `for i := range c` 반복문은 채널이 닫힐 때까지 값을 수신
+
+== Select
+
+* `select` 구문은 고루틴이 다수의 통신 동작으로부터 수행 준비를 기다리도록 기능 제공
+* `select` 는 `case` 구문으로 받는 통신 동작들 중 하나가 수행될 수 있을 때까지 수행을 블록
+* 다수의 채널이 동시에 준비되면 그 중 하나를 무작위로 선택
+* default 케이스는 현재 수행 준비가 완료된 케이스가 없을 때 수행
+** 블로킹 없이(비동기) 송/수신을 하고자 할 때 사용
+
+[source, go]
+----
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func fibonacci(c, quit chan int) {
+	x, y := 0, 1
+	for {
+		select { <1>
+		case c <- x:
+			x, y = y, x+y
+		case <-quit:
+			fmt.Println("quit")
+			return
+		}
+	}
+}
+
+func main() {
+	c := make(chan int)
+	quit := make(chan int)
+	go func() {
+		for i := 0; i < 5; i++ {
+			fmt.Println(<-c)
+		}
+		quit <- 0
+	}()
+	fibonacci(c, quit)
+
+	tick := time.Tick(1e8)
+	boom := time.After(5e8)
+	for {
+		select {
+		case <-tick:
+			fmt.Println("tick.")
+		case <-boom:
+			fmt.Println("boom!")
+			return
+		default: <2>
+			fmt.Println("    .")
+			time.Sleep(5e7)
+		}
+	}
+}
+
+// ---result---
+// 0
+// 1
+// 1
+// 2
+// 3
+// quit
+//     .
+//     .
+// tick.
+//     .
+//     .
+// tick.
+//     .
+//     .
+// tick.
+//     .
+//     .
+// tick.
+//     .
+//     .
+// tick.
+// boom!
+----
+<1> quit 채널이 값을 수신하면 종료
+<2> default 케이스
